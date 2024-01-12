@@ -1,0 +1,5 @@
+[package]
+name = "4x8matrix/profile-service-fork"
+version = "1.0.0"
+realm = "shared"
+registry = "https://github.com/upliftgames/wally-index"
