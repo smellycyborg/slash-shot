@@ -5,8 +5,8 @@ local Packages = ReplicatedStorage:WaitForChild("Packages")
 
 local Knit = require(Packages:WaitForChild("knit"))
 
-local DASH_COOLDOWN_TIME = 0.4
-local DASH_STOP_TIME = 0.215
+local DASH_COOLDOWN_TIME = 0.45
+local DASH_STOP_TIME = 0.14
 
 local DashService = Knit.CreateService({
     Name = "DashService",
@@ -23,31 +23,17 @@ local DashService = Knit.CreateService({
 
 function DashService:KnitInit()
     local function characterAdded(character)
-        local rootPart = character:WaitForChild("HumanoidRootPart")
-        local rootAtt = rootPart:WaitForChild("RootAttachment")
-
-        local linearVelocity = Instance.new("LinearVelocity")
-        linearVelocity.Name = "DashVelocity"
-        linearVelocity.Attachment0 = rootAtt
-        linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
-        linearVelocity.Enabled = false
-        linearVelocity.MaxForce = 250000
-
-        local alignOri = Instance.new("AlignOrientation")
-        alignOri.Enabled = false
-        alignOri.Attachment0 = rootAtt
-        alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
-        alignOri.MaxTorque = math.huge
-        alignOri.Responsiveness = 200
-
-        linearVelocity.Parent = rootPart
-        alignOri.Parent = rootPart
+        
     end
 
     local function playerAdded(player)
         self.CooldownsPerPlayer[player] = {}
         self.CooldownTaskPerPlayer[player] = {}
         self.DashingTaskPerPlayer[player] = {}
+
+        local dashBool = Instance.new("BoolValue", player)
+        dashBool.Name = "DashBool"
+        dashBool.Value = false
 
         player.CharacterAdded:Connect(characterAdded)
     end
@@ -70,10 +56,14 @@ function DashService:KnitStart()
 end
 
 function DashService:dash(player, keyCode)
-    warn("Player Cooldowns:  ", self.CooldownsPerPlayer[player])
+    -- warn("Player Cooldowns:  ", self.CooldownsPerPlayer[player])
 
-    if self.CooldownsPerPlayer[player][keyCode] or table.find(self.Dashing, player) then
-        return
+    if GearService:getHealth(player) <= 0 then
+        return false
+    end
+
+    if self.CooldownsPerPlayer[player][keyCode] or table.find(self.Dashing, player) or  next(self.CooldownsPerPlayer[player]) then
+        return false
     end
 
     self.CooldownsPerPlayer[player][keyCode] = tick()
@@ -87,19 +77,19 @@ function DashService:dash(player, keyCode)
     local character = player.Character
     if not character then
         cancelDash()
-        return
+        return false
     end
 
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if not rootPart then
         cancelDash()
-        return
+        return false
     end
 
     local humanoid = character:FindFirstChild("Humanoid")
     if not humanoid then
         cancelDash()
-        return
+        return false
     end
 
     local equipped = GearService:getEquipped(player)
@@ -110,23 +100,16 @@ function DashService:dash(player, keyCode)
         dashForce = 40
     end
 
-    local dashVelocity = rootPart:FindFirstChild("DashVelocity")
-    local alignOri = rootPart:FindFirstChild("AlignOrientation")
+    player:FindFirstChild("DashBool").Value = true
 
     self.DashingTaskPerPlayer[player][keyCode] = task.delay(DASH_STOP_TIME, function()
         if table.find(self.Dashing, player) then
             table.remove(self.Dashing, table.find(self.Dashing, player))
 
-            alignOri.Enabled = false
-            dashVelocity.Enabled = false
-
-            rootPart.Velocity = Vector3.zero
-
-            humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-            humanoid.PlatformStand = false
-
             self.Client.TurnOffDash:Fire(player)
         end
+
+        player:FindFirstChild("DashBool").Value = false
     end)
 
     self.CooldownTaskPerPlayer[player][keyCode] = task.delay(DASH_COOLDOWN_TIME, function()
@@ -139,28 +122,10 @@ function DashService:dash(player, keyCode)
 		end
     end)
 
-    local direction = Vector3.new(humanoid.MoveDirection.X, 0, humanoid.MoveDirection.Z)
-
-    alignOri.CFrame = CFrame.new(rootPart.Position, rootPart.Position + direction)
-    dashVelocity.VectorVelocity =  direction * dashForce
-
-    humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-    humanoid.PlatformStand = true
-
-    alignOri.Enabled = true
-    dashVelocity.Enabled = true
-
     return true, equipped
 end
 
 function DashService:cleanDash(player)
-    table.remove(self.Dashing, table.find(self.Dashing, player))
-
-    for keyCode, runningTask in self.DashingTaskPerPlayer[player] do
-        task.cancel(runningTask)
-        self.DashingTaskPerPlayer[player][keyCode] = nil
-    end
-
     for keyCode, runningTask in self.CooldownTaskPerPlayer[player] do
         task.cancel(runningTask)
         self.CooldownTaskPerPlayer[player][keyCode] = nil
@@ -170,31 +135,15 @@ function DashService:cleanDash(player)
         self.CooldownsPerPlayer[player][keyCode] = nil
     end
 
-    local character = player.Character
-    if not character then
-        return
-    end
+    print("successfully cleaned dash.")
+end
 
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then
-        return
-    end
+function DashService:getDashing(player)
+    return table.find(self.Dashing, player)
+end
 
-    local humanoid = character:FindFirstChild("Humanoid")
-    if not humanoid then
-        return
-    end
-
-    local dashVelocity = rootPart:FindFirstChild("DashVelocity")
-    local alignOri = rootPart:FindFirstChild("AlignOrientation")
-
-    alignOri.Enabled = false
-    dashVelocity.Enabled = false
-
-    rootPart.Velocity = Vector3.zero
-
-    humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-    humanoid.PlatformStand = false
+function DashService:getCooldownTask(player)
+    return self.CooldownTaskPerPlayer[player]
 end
 
 function DashService.Client:dash(player, keyCode)
